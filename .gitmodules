@@ -1,0 +1,3 @@
+[submodule "qemu-shoggoth"]
+	path = qemu-shoggoth
+	url = git@github.com:cromulencellc/qemu-shoggoth.git
