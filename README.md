@@ -1,7 +1,7 @@
 # Shoggoth QEMU
 
 Shoggoth is a heavily modified fork of [QEMU](https://github.com/qemu/qemu)
-3.0 designed for high performance Dynamic Binary Instrumentation (DBI) of a
+4.0.1 designed for high performance Dynamic Binary Instrumentation (DBI) of a
 complete system with options to perform focused user-mode analysis. Features
 added to QEMU include operating system handlers, external plugins, and Rapid
 Analysis (RA). OS handlers enable user-mode analysis within a system context
@@ -92,6 +92,51 @@ PID	CR3		TGID 	NAME
 The `ps` listing uses `->` to denote the active application and `*` to denote
 the application in focus. Use the `pid` command to set the application focus.
 
+To see the memory mappings for the application in focus use `maps`.
+
+```
+(qemu) os
+Found OS linux!
+(qemu) pid 472
+PID	CR3		TGID 	NAME
+1	3cb0f000 	1 	systemd
+163	3cbdc000 	163 	systemd-journal
+186	3a38d000 	186 	systemd-udevd
+280	3690e000 	280 	systemd-timesyn
+305	39f14000 	305 	rsyslogd
+306	3a24e000 	306 	systemd-logind
+309	38ca1000 	309 	dbus-daemon
+325	3bee9000 	325 	cron
+341	3a25b000 	341 	dhclient
+354	3b138000 	354 	login
+422	38caa000 	422 	bash
+*->472	3a63f000 	472 	print_name
+(qemu) maps
+Location			Flags		Protections
+0x400000-0x401000	0x8800875	0x25
+0x600000-0x601000	0x8900871	0x8000000000000025
+0x601000-0x602000	0x8900873	0x8000000000000025
+0x602000-0x624000	0x8100073	0x8000000000000025
+0x7ffff7a3a000-0x7ffff7bcf000	0x8000075	0x25
+0x7ffff7bcf000-0x7ffff7dcf000	0x8000070	0x120
+0x7ffff7dcf000-0x7ffff7dd3000	0x8900071	0x8000000000000025
+0x7ffff7dd3000-0x7ffff7dd5000	0x8900073	0x8000000000000025
+0x7ffff7dd5000-0x7ffff7dd9000	0x8900073	0x8000000000000025
+0x7ffff7dd9000-0x7ffff7dfc000	0x8000875	0x25
+0x7ffff7ff0000-0x7ffff7ff2000	0x8100073	0x8000000000000025
+0x7ffff7ff8000-0x7ffff7ffa000	0xc044411	0x8000000000000025
+0x7ffff7ffa000-0x7ffff7ffc000	0x8040075	0x25
+0x7ffff7ffc000-0x7ffff7ffd000	0x8900871	0x8000000000000025
+0x7ffff7ffd000-0x7ffff7ffe000	0x8900873	0x8000000000000025
+0x7ffff7ffe000-0x7ffff7fff000	0x8100073	0x8000000000000025
+0x7ffffffde000-0x7ffffffff000	0x100173	0x8000000000000025
+(qemu) 
+```
+
+The OS handler included works with the majority of Debian and Ubuntu distros
+using Linux Kernel 4.x.
+
+
 #### Debugging
 
 Once an application is in focus, breakpoints can be set for process debugging
@@ -110,6 +155,8 @@ ID	Address
 ```
 
 Use the `unpid` command to remove application focus:
+Note that breakpoints will only trigger for the application that
+was in focus at the time when it was set.
 
 ```
 (qemu) unpid
@@ -160,8 +207,7 @@ A demo of the TCP interface for RA mode control is provided by the
 scripts:
 
 ```
-$./ctrl_execme.sh
-(open a new terminal)
+$./ctrl_execme.sh &
 $./rsave_execme.sh
 ```
 
@@ -176,7 +222,7 @@ $./run_pwnme_lots.sh
 `run_pwnme_lots.sh` demonstratetes control of an RA session through the "C"
 plugin (see `pwnme_lots_solve` in the plugins directory) shared library. The
 "C" interface for this release is considered very stable. The plugin will
-execute a code coverage guided fuzzer that will attempt to execute a specific
+executing a code coverage guided fuzzer that will attempt to execute a specific
 branch in the code which triggers a buffer overflow on the stack.
 
 ```
@@ -189,22 +235,120 @@ Python 3 interface is still considered experimental. The plugin will detect the
 location of a buffer overflow on the stack that overwrites the `main`
 function's return pointer.
 
+```
+$./run_trace_me.sh
+```
+
+`run_trace_me.sh` demonstrates per instruction instrumentation. The buffer
+to be executed is randomized then executed, the execution callback will then
+proceed to disassemble the executing instruction. Note that this demonstrates
+RA's ability to recover from internal TCG errors when executing a series
+of bad instructions.
+
+### Qt GUI
+
+Shoggoth also provides a basic Qt plugin that replaces the traditional QEMU window.
+This feature is currently experimental but you can use it with the following command:
+
+```
+./qemu-system-x86_64 -M pc-i440fx-3.0 --drive file=debian9.qcow2,format=qcow2 -m 2G -monitor stdio -snapshot -diplay plugin,plugin-name=qtview
+```
+
 ### Plugins
 
 Plugins reside in the `qemu-shoggoth/plugins` folder and provide support for
-extension or instrumentation of a virtual machine. After compilation, the plugins
-will be installed to the qemu plugins folder whose default location is `~/.qemuplugins`.
-The plugin installation directory can be modified during configuration with `--plugindir`.
+extension or instrumentation of a virtual machine.
 
 Create skeletons for new plugins using the
 [`wizard.py`](qemu-shoggoth/plugins/wizard.py) script in the plugins directory.
 
 ```
 $./wizard.py create my_plugin
-(note callbacks can be added at create time as well)
-$./wizard.py create myplugin -cb exception
+(note callbacks can be added with the wizard when creating a plugin)
+$./wizard.py create myplugin -cb ?
+(to create a plugin with all callbacks)
+$./wizard.py create myplugin -cb ra_start ra_stop ra_idle interrupt memory_read memory_write state_change exception syscall syscall_exit command breakpoint instructions
 ```
 
+Callbacks perform the following...
+
+```
+ra_start
+```
+
+Called when a Rapid Analysis session is starting. You can use this callback to change vm properties that aren't supported by the job system. The job system can change settings registers, memory, and file descriptor contents per session.
+
+```
+ra_stop
+```
+
+Called when a Rapid Analysis session has ended. You can use this callback to collect vm information that isn't easily reported by the job system. The job system can report processor information, registers, physical memory, and virtual memory (full and diffs by page) per session.
+
+```
+ra_idle
+```
+
+Called when the Rapid Analysis system does not have a pending job. You can use this callback to submit additional jobs to the RA system or perform post-processing. Note that the vm state from the previous job is still loaded however we don't guarantee validity. Please use ra_stop to analyze vm state after a job session finishes.
+
+```
+interrupt
+```
+
+Receives CPU interrupts.
+
+```
+memory_read
+```
+
+Receives memory reads for physical, virtual, and DMA accesses after the read has occurred.
+
+```
+memory_write
+```
+
+Receives memory writes for physical, virtual, and DMA accesses before the write has occurred.
+
+```
+state_change
+```
+
+Called when the vm changes such as from start to stop or vice versa.
+
+```
+exception
+```
+
+Called when a CPU exception occurs.
+
+```
+syscall
+```
+
+Called when a syscall enter is about to occur.
+
+```
+syscall_exit
+```
+
+Called when a syscall exit is about to occur.
+
+```
+command
+```
+
+Called when a command is dispatched. The callback should return true if it handles the command.
+
+```
+breakpoint
+```
+
+Called when a breakpoint has been hit.
+
+```
+instructions
+```
+
+Called for every executing instruction before it executes.
 
 ## Versioning
 
