@@ -1,1 +1,1 @@
-./src/qemu-shoggoth/x86_64-softmmu/qemu-system-x86_64 --drive file=debian9.qcow2,format=qcow2 -m 2G -snapshot -monitor stdio -plugin http_dataflow -device e1000,netdev=net0 -netdev user,id=net0,hostfwd=tcp::8888-:8000
+./qemu-system-x86_64 -M pc-i440fx-3.0 --drive file=debian9.qcow2,format=qcow2 -m 2G -monitor stdio -device e1000,netdev=net0 -netdev user,id=net0,hostfwd=tcp::8888-:8000 --loadvm http_server -plugin http_dataflow
