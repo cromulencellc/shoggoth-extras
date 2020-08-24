@@ -1,3 +1,3 @@
 [submodule "qemu-shoggoth"]
 	path = qemu-shoggoth
-	url = https://github.com/cromulencellc/qemu-shoggoth.git
+	url = https://github.com/Tekeli-li/qemu-shoggoth.git
