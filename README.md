@@ -270,6 +270,8 @@ $./wizard.py create myplugin -cb ?
 $./wizard.py create myplugin -cb ra_start ra_stop ra_idle interrupt memory_read memory_write state_change exception syscall syscall_exit command breakpoint instructions
 ```
 
+In order to install a plugin, compile the code into a .so or .pyc file, and then copy that file into ~/.qemuplugins.
+
 Callbacks perform the following...
 
 ```
